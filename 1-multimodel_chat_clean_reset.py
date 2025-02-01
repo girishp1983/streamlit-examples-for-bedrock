@@ -1,6 +1,7 @@
 import json
 import boto3
 import streamlit as st
+from botocore.config import Config
 
 # Model configuration
 MODEL_OPTIONS = {
@@ -80,10 +81,17 @@ with st.sidebar:
 # Display the selected model ID
 st.caption(f"🚀 Powered by | Model: {MODEL_ID}")
 
+config = Config(
+    read_timeout=10000,
+    connect_timeout=600,
+    retries={"max_attempts": 3}
+)
+
 # Initialize Bedrock client using Streamlit secrets
 try:
     client = boto3.client(
         "bedrock-runtime",
+        config=config,
         region_name=st.secrets.AWS["AWS_DEFAULT_REGION"],
         aws_access_key_id=st.secrets.AWS["AWS_ACCESS_KEY_ID"],
         aws_secret_access_key=st.secrets.AWS["AWS_SECRET_ACCESS_KEY"]
