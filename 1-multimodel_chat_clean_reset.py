@@ -73,7 +73,7 @@ with st.sidebar:
     
     # Inference parameters
     st.subheader("Inference Parameters")
-    max_tokens = st.number_input("Max Tokens", min_value=1, max_value=32000, value=4096)
+    max_tokens = st.number_input("Max Tokens", min_value=1, max_value=32000, value=5120)
     top_p = st.slider("Top P", min_value=0.0, max_value=1.0, value=0.95)
     temperature = st.slider("Temperature", min_value=0.0, max_value=1.0, value=0.6)
     top_k = st.number_input("Top K", min_value=1, max_value=100, value=10)
