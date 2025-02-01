@@ -8,7 +8,7 @@ import streamlit as st
 MODEL_ID = "arn:aws:bedrock:us-east-1:963067361214:provisioned-model/dx9g06qbz7f6"
 
 # App configuration
-st.set_page_config(page_title="Amazon Bedrock Nova Reasoning Model Chat", layout="wide")
+st.set_page_config(page_title="Amazon Nova Reasoning", layout="wide")
 st.title("💬 Amazon Bedrock Nova Reasoning Model Chat")
 #st.caption("🚀 Powered by Nova via Amazon Bedrock Converse API")
 st.caption(f"🚀 Powered by | Model: {MODEL_ID}")
