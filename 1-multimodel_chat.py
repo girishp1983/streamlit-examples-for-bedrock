@@ -14,7 +14,7 @@ MODEL_OPTIONS = {
 
 # App configuration
 st.set_page_config(page_title="Amazon Nova Reasoning", layout="wide")
-st.title("💬 Amazon Bedrock Nova Reasoning Model Chat")
+st.title("💬 Amazon Nova Reasoning Model Chat")
 
 # Sidebar for configuration
 with st.sidebar:
