@@ -20,7 +20,8 @@ except Exception as e:
     st.stop()
 
 # Model configuration
-MODEL_ID = "us.amazon.nova-lite-v1:0"
+#MODEL_ID = "us.amazon.nova-lite-v1:0"
+MODEL_ID = "arn:aws:bedrock:us-east-1:963067361214:provisioned-model/dx9g06qbz7f6"
 
 # Sidebar for configuration
 with st.sidebar:
