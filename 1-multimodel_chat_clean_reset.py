@@ -36,6 +36,7 @@ with st.sidebar:
     if st.session_state.selected_model != MODEL_ID:
         st.session_state.selected_model = MODEL_ID
         st.session_state.messages = []  # Clear chat history
+        st.warning("Model changed. Chat history cleared.")  # Notify user
     
     # System prompt selection
     st.subheader("System Prompt")
@@ -51,6 +52,16 @@ with st.sidebar:
     
     # Set the system prompt based on user selection
     system_prompt = reasoning_prompt if prompt_choice == "Reasoning Prompt" else default_prompt
+    
+    # Track the selected system prompt in session state
+    if "system_prompt" not in st.session_state:
+        st.session_state.system_prompt = system_prompt
+    
+    # Reset chat history if the system prompt changes
+    if st.session_state.system_prompt != system_prompt:
+        st.session_state.system_prompt = system_prompt
+        st.session_state.messages = []  # Clear chat history
+        st.warning("System prompt changed. Chat history cleared.")  # Notify user
     
     # Display the selected system prompt in a text area
     system_prompt = st.text_area(
