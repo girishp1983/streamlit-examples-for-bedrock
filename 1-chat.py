@@ -1,106 +1,89 @@
-import streamlit as st
-import dotenv
-import boto3
-
-import os
-import random
 import json
+import boto3
+import streamlit as st
 
-dotenv.load_dotenv()
+# App configuration
+st.set_page_config(page_title="Amazon Bedrock Chat", layout="wide")
+st.title("💬 Amazon Bedrock Chat")
+st.caption("🚀 Powered by Nova via Amazon Bedrock")
 
-# Reference: https://docs.streamlit.io/knowledge-base/tutorials/build-conversational-apps
-st.title('Chat Bot Demo')
-st.subheader("Powered by Amazon Berock with Anthropic Claude v2",
-             divider="rainbow")
-
-
-@st.cache_data
-def get_welcome_message() -> str:
-    return random.choice(
-        [
-            "Hello there! How can I assist you today?",
-            "Hi there! Is there anything I can help you with?",
-            "Do you need help?",
-        ]
+# Initialize Bedrock client using Streamlit secrets
+try:
+    client = boto3.client(
+        "bedrock-runtime",
+        region_name=st.secrets.AWS["AWS_DEFAULT_REGION"],
+        aws_access_key_id=st.secrets.AWS["AWS_ACCESS_KEY_ID"],
+        aws_secret_access_key=st.secrets.AWS["AWS_SECRET_ACCESS_KEY"]
     )
+except Exception as e:
+    st.error(f"Failed to initialize Bedrock client: {str(e)}")
+    st.stop()
 
+# Model configuration
+# MODEL_ID = "anthropic.claude-3-haiku-20240307-v1:0"
+MODEL_ID = "us.amazon.nova-lite-v1:0"
+REGION = "us-east-1"
 
-@st.cache_resource
-def get_bedrock_client():
-    return boto3.client(service_name='bedrock-runtime')
-
-
-def get_history() -> str:
-    hisotry_list = [
-        f"{record['role']}: {record['content']}" for record in st.session_state.messages
-    ]
-    return '\n\n'.join(hisotry_list)
-
-
-client = get_bedrock_client()
-modelId = 'anthropic.claude-v2:1'
-accept = 'application/json'
-contentType = 'application/json'
-
-
-welcome_message = get_welcome_message()
-with st.chat_message('assistant'):
-    st.markdown(welcome_message)
-
+# Session state initialization
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-for message in st.session_state.messages:
-    display_role = 'user'
-    if message['role'] == 'Assistant':
-        display_role = 'assistant'
+# Sidebar for system prompt
+with st.sidebar:
+    st.header("Configuration")
+    system_prompt = st.text_area(
+        "System Prompt",
+        value="You are a helpful AI assistant.",
+        help="Define the AI's behavior and personality"
+    )
+    st.divider()
+    st.markdown("**Model Info**")
+    st.text(f"Model: {MODEL_ID}")
+    st.text(f"Region: {REGION}")
 
-    with st.chat_message(display_role):
+# Chat interface
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-
-def parse_stream(stream):
-    full_response = ""
-    for event in stream:
-        chunk = event.get('chunk')
-        if chunk:
-            message = json.loads(chunk.get('bytes').decode())[
-                'completion'] or ""
-            full_response += message
-            yield message
-    st.session_state.messages.append(
-        {"role": "Assistant", "content": full_response}
-    )
-
-
-if prompt := st.chat_input("What's up?"):
-    st.session_state.messages.append({"role": "Human", "content": prompt})
-    with st.chat_message("Human"):
+if prompt := st.chat_input("What would you like to ask?"):
+    # Add user message to history
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
         st.markdown(prompt)
 
-    with st.chat_message("assistant"):
-        message_placeholder = st.empty()
-        full_response = ""
-        history = get_history()
-        body = json.dumps({
-            "prompt": f"{history}\n\nAssistant:",
-            "max_tokens_to_sample": 300,
-            "temperature": 0.1,
-            "top_p": 0.9,
-        })
+    # Prepare the request body
+    messages = [{"role": "system", "content": system_prompt}]
+    messages.extend([{"role": m["role"], "content": m["content"]} for m in st.session_state.messages])
+
+    body = json.dumps({
+        "anthropic_version": "bedrock-2023-05-31",
+        "max_tokens": 1024,
+        "messages": messages
+    })
+
+    # Stream the response
+    try:
         response = client.invoke_model_with_response_stream(
-            body=body,
-            modelId=modelId,
+            modelId=MODEL_ID,
+            body=body
         )
-        stream = response.get('body')
-        if stream:
-            # st.write_stream is introduced in streamlit v1.31.0
-            st.write_stream(parse_stream(stream))
-
-
-if DEBUG := os.getenv("DEBUG", False):
-    st.subheader("History", divider="rainbow")
-    history_list = [
-        f"{record['role']}: {record['content']}" for record in st.session_state.messages
-    ]
-    st.write(history_list)
+        
+        with st.chat_message("assistant"):
+            response_placeholder = st.empty()
+            full_response = ""
+            
+            for event in response.get("body"):
+                chunk = event.get('chunk')
+                if chunk:
+                    message = json.loads(chunk.get("bytes").decode())
+                    if message['type'] == "content_block_delta":
+                        text = message['delta']['text'] or ""
+                        full_response += text
+                        response_placeholder.markdown(full_response + "▌")
+            
+            response_placeholder.markdown(full_response)
+            st.session_state.messages.append({"role": "assistant", "content": full_response})
+            
+    except Exception as e:
+        st.error(f"An error occurred: {str(e)}")
