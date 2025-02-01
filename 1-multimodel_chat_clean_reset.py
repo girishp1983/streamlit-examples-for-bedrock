@@ -73,9 +73,9 @@ with st.sidebar:
     # Inference parameters
     st.subheader("Inference Parameters")
     max_tokens = st.number_input("Max Tokens", min_value=1, max_value=32000, value=4096)
-    top_p = st.slider("Top P", min_value=0.0, max_value=1.0, value=0.1)
-    temperature = st.slider("Temperature", min_value=0.0, max_value=1.0, value=0.3)
-    top_k = st.number_input("Top K", min_value=1, max_value=100, value=20)
+    top_p = st.slider("Top P", min_value=0.0, max_value=1.0, value=0.95)
+    temperature = st.slider("Temperature", min_value=0.0, max_value=1.0, value=0.6)
+    top_k = st.number_input("Top K", min_value=1, max_value=100, value=10)
 
 # Display the selected model ID
 st.caption(f"🚀 Powered by | Model: {MODEL_ID}")
