@@ -5,7 +5,7 @@ import streamlit as st
 # App configuration
 st.set_page_config(page_title="Amazon Bedrock Chat", layout="wide")
 st.title("💬 Amazon Bedrock Chat")
-st.caption("🚀 Powered by Nova via Amazon Bedrock")
+st.caption("🚀 Powered by Nova via Amazon Bedrock Converse API")
 
 # Initialize Bedrock client using Streamlit secrets
 try:
@@ -20,70 +20,79 @@ except Exception as e:
     st.stop()
 
 # Model configuration
-# MODEL_ID = "anthropic.claude-3-haiku-20240307-v1:0"
 MODEL_ID = "us.amazon.nova-lite-v1:0"
-REGION = "us-east-1"
 
-# Session state initialization
+# Sidebar for configuration
+with st.sidebar:
+    st.header("Configuration")
+    
+    # System prompt input
+    system_prompt = st.text_area(
+        "System Prompt",
+        value="You are a helpful assistant.",
+        help="Define the AI's behavior and personality."
+    )
+    
+    # Inference parameters
+    st.subheader("Inference Parameters")
+    max_tokens = st.number_input("Max Tokens", min_value=1, max_value=4096, value=300)
+    top_p = st.slider("Top P", min_value=0.0, max_value=1.0, value=0.1)
+    temperature = st.slider("Temperature", min_value=0.0, max_value=1.0, value=0.3)
+    top_k = st.number_input("Top K", min_value=1, max_value=100, value=20)
+
+# Chat interface
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Sidebar for system prompt
-with st.sidebar:
-    st.header("Configuration")
-    system_prompt = st.text_area(
-        "System Prompt",
-        value="You are a helpful AI assistant.",
-        help="Define the AI's behavior and personality"
-    )
-    st.divider()
-    st.markdown("**Model Info**")
-    st.text(f"Model: {MODEL_ID}")
-    st.text(f"Region: {REGION}")
-
-# Chat interface
+# Display chat history
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
+# User input
 if prompt := st.chat_input("What would you like to ask?"):
     # Add user message to history
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Prepare the request body
-    messages = [{"role": "system", "content": system_prompt}]
-    messages.extend([{"role": m["role"], "content": m["content"]} for m in st.session_state.messages])
+    # Prepare the request body for Converse API
+    messages = [
+        {"role": "user", "content": [{"text": prompt}]},
+    ]
+    
+    system = [{"text": system_prompt}]
+    
+    inference_config = {
+        "maxTokens": max_tokens,
+        "topP": top_p,
+        "temperature": temperature
+    }
+    
+    additional_model_request_fields = {
+        "inferenceConfig": {
+            "topK": top_k
+        }
+    }
 
-    body = json.dumps({
-#        "anthropic_version": "bedrock-2023-05-31",
-#        "max_tokens": 1024,
-        "messages": messages
-    })
-
-    # Stream the response
+    # Call the Converse API
     try:
-        response = client.invoke_model_with_response_stream(
+        model_response = client.converse(
             modelId=MODEL_ID,
-            body=body
+            messages=messages,
+            system=system,
+            inferenceConfig=inference_config,
+            additionalModelRequestFields=additional_model_request_fields
         )
         
+        # Extract and display the response
+        response_text = model_response["output"]["message"]["content"][0]["text"]
+        
         with st.chat_message("assistant"):
-            response_placeholder = st.empty()
-            full_response = ""
-            
-            for event in response.get("body"):
-                chunk = event.get('chunk')
-                if chunk:
-                    message = json.loads(chunk.get("bytes").decode())
-                    if message['type'] == "content_block_delta":
-                        text = message['delta']['text'] or ""
-                        full_response += text
-                        response_placeholder.markdown(full_response + "▌")
-            
-            response_placeholder.markdown(full_response)
-            st.session_state.messages.append({"role": "assistant", "content": full_response})
-            
+            st.markdown(response_text)
+        
+        # Add assistant response to history
+        st.session_state.messages.append({"role": "assistant", "content": response_text})
+    
     except Exception as e:
         st.error(f"An error occurred: {str(e)}")
