@@ -2,10 +2,16 @@ import json
 import boto3
 import streamlit as st
 
+
+# Model configuration
+#MODEL_ID = "us.amazon.nova-lite-v1:0"
+MODEL_ID = "arn:aws:bedrock:us-east-1:963067361214:provisioned-model/dx9g06qbz7f6"
+
 # App configuration
 st.set_page_config(page_title="Amazon Bedrock Chat", layout="wide")
 st.title("💬 Amazon Bedrock Chat")
-st.caption("🚀 Powered by Nova via Amazon Bedrock Converse API")
+#st.caption("🚀 Powered by Nova via Amazon Bedrock Converse API")
+st.caption(f"🚀 Powered by Nova via Amazon Bedrock Converse API | Model: {MODEL_ID}")
 
 # Initialize Bedrock client using Streamlit secrets
 try:
@@ -19,9 +25,7 @@ except Exception as e:
     st.error(f"Failed to initialize Bedrock client: {str(e)}")
     st.stop()
 
-# Model configuration
-#MODEL_ID = "us.amazon.nova-lite-v1:0"
-MODEL_ID = "arn:aws:bedrock:us-east-1:963067361214:provisioned-model/dx9g06qbz7f6"
+
 
 # Sidebar for configuration
 with st.sidebar:
