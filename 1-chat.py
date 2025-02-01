@@ -57,8 +57,8 @@ if prompt := st.chat_input("What would you like to ask?"):
     messages.extend([{"role": m["role"], "content": m["content"]} for m in st.session_state.messages])
 
     body = json.dumps({
-        "anthropic_version": "bedrock-2023-05-31",
-        "max_tokens": 1024,
+#        "anthropic_version": "bedrock-2023-05-31",
+#        "max_tokens": 1024,
         "messages": messages
     })
 
