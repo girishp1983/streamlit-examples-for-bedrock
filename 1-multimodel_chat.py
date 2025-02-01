@@ -8,7 +8,7 @@ MODEL_OPTIONS = {
     "Nova Lite": "us.amazon.nova-lite-v1:0",
     "Nova Pro": "us.amazon.nova-pro-v1:0",
     "Nova Lite Custom": "arn:aws:bedrock:us-east-1:963067361214:provisioned-model/dx9g06qbz7f6",
-    "Claude Sonnet 3.5": "anthropic.claude-3-5-sonnet-20240620-v1:0",
+    "Claude Sonnet 3.5": "anthropic.claude-3-5-sonnet-20241022-v2:0",
     "Claude Haiku 3.5": "anthropic.claude-3-5-haiku-20241022-v1:0"
 }
 
