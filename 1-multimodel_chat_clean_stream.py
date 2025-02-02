@@ -107,7 +107,7 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-def stream_response(client, model_id, messages, system_prompt, inference_config):
+def stream_response(client, model_id, messages, system_prompt, inference_config, additional_model_request_fields):
     """
     Streams the response from the model
     """
@@ -118,7 +118,8 @@ def stream_response(client, model_id, messages, system_prompt, inference_config)
             modelId=model_id,
             messages=messages,
             system=system_prompts,
-            inferenceConfig=inference_config
+            inferenceConfig=inference_config,
+            additionalModelRequestFields=additional_model_request_fields
         )
         
         stream = response.get('stream')
@@ -149,12 +150,17 @@ if prompt := st.chat_input("What would you like to ask?"):
         {"role": "user", "content": [{"text": prompt}]},
     ]
     
-    # Include all inference parameters in the inferenceConfig
+    # Separate inferenceConfig and additionalModelRequestFields
     inference_config = {
         "maxTokens": max_tokens,
         "topP": top_p,
-        "temperature": temperature,
-        "topK": top_k  # Moved topK inside inferenceConfig
+        "temperature": temperature
+    }
+    
+    additional_model_request_fields = {
+        "inferenceConfig": {
+            "topK": top_k
+        }
     }
 
     # Create a placeholder for the streaming response
@@ -168,7 +174,8 @@ if prompt := st.chat_input("What would you like to ask?"):
             MODEL_ID,
             messages,
             system_prompt,
-            inference_config
+            inference_config,
+            additional_model_request_fields
         ):
             if chunk:
                 full_response += chunk
