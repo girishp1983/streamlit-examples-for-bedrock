@@ -16,6 +16,22 @@ MODEL_OPTIONS = {
 st.set_page_config(page_title="Amazon Bedrock Reasoning Capability Test Platform", layout="wide")
 st.title("💬 Amazon Bedrock Reasoning Capability Test Platform")
 
+def check_incomplete_tags(text):
+    """
+    Check if there are any incomplete tag pairs and return status
+    """
+    begin_thought = "<|begin_of_thought|>" in text
+    end_thought = "<|end_of_thought|>" in text
+    begin_solution = "<|begin_of_solution|>" in text
+    end_solution = "<|end_of_solution|>" in text
+    
+    has_incomplete_tags = (
+        (begin_thought and not end_thought) or
+        (begin_solution and not end_solution)
+    )
+    
+    return has_incomplete_tags
+
 def format_streaming_response(text, is_reasoning_prompt=True):
     """
     Formats the response for streaming, handling partial tags and incomplete content
@@ -57,6 +73,10 @@ def format_streaming_response(text, is_reasoning_prompt=True):
     # If no sections have started yet, just return the text
     if formatted_text == "":
         return current_text + "▌"
+    
+    # Check for incomplete tags and add warning if needed
+    if check_incomplete_tags(text):
+        formatted_text += "\n\n⚠️ *Note: Response was cut off due to token limit. Some sections may be incomplete.*"
         
     return formatted_text.strip() + "▌"
 
@@ -68,11 +88,11 @@ def format_final_response(text, is_reasoning_prompt=True):
         return text
         
     # Extract thought content
-    thought_match = re.search(r'<\|begin_of_thought\|>(.*?)<\|end_of_thought\|>', text, re.DOTALL)
+    thought_match = re.search(r'<\|begin_of_thought\|>(.*?)(?:<\|end_of_thought\|>|$)', text, re.DOTALL)
     thought_content = thought_match.group(1).strip() if thought_match else ""
 
     # Extract solution content
-    solution_match = re.search(r'<\|begin_of_solution\|>(.*?)<\|end_of_solution\|>', text, re.DOTALL)
+    solution_match = re.search(r'<\|begin_of_solution\|>(.*?)(?:<\|end_of_solution\|>|$)', text, re.DOTALL)
     solution_content = solution_match.group(1).strip() if solution_match else ""
 
     # Format with headers
@@ -81,6 +101,10 @@ def format_final_response(text, is_reasoning_prompt=True):
         formatted_text += "### Internal Monologue\n\n" + thought_content + "\n\n"
     if solution_content:
         formatted_text += "### Solution\n\n" + solution_content
+
+    # Check for incomplete tags and add warning if needed
+    if check_incomplete_tags(text):
+        formatted_text += "\n\n⚠️ *Note: Response was cut off due to token limit. Some sections may be incomplete.*"
 
     return formatted_text.strip() if formatted_text else text
 
