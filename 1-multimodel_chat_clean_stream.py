@@ -38,7 +38,7 @@ def format_streaming_response(text, is_reasoning_prompt=True):
     
     # Check if thought section has started
     if "<|begin_of_thought|>" in current_text:
-        formatted_text += "### Nova Lite Reasoning for you - I am not perfect, but will try my best\n\n"
+        formatted_text += "### Nova Lite Reasoning for you - I am not perfect, but will try my best🫡\n\n"
         # Split at the beginning of thought
         parts = current_text.split("<|begin_of_thought|>", 1)
         if len(parts) > 1:
@@ -91,7 +91,7 @@ def format_final_response(text, is_reasoning_prompt=True):
     # Format with headers
     formatted_text = ""
     if thought_content:
-        formatted_text += "### Note Lite Reasoning for you - I am not perfect, but will try my best\n\n" + thought_content + "\n\n"
+        formatted_text += "### Nova Lite Reasoning for you - I am not perfect, but will try my best🫡\n\n" + thought_content + "\n\n"
     if solution_content:
         formatted_text += "### Solution\n\n" + solution_content
 
