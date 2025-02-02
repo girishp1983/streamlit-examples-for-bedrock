@@ -2,6 +2,7 @@ import json
 import boto3
 import streamlit as st
 from botocore.config import Config
+import re
 
 # Model configuration
 MODEL_OPTIONS = {
@@ -14,6 +15,56 @@ MODEL_OPTIONS = {
 # App configuration
 st.set_page_config(page_title="Amazon Bedrock Reasoning Capability Test Platform", layout="wide")
 st.title("💬 Amazon Bedrock Reasoning Capability Test Platform")
+
+def format_streaming_response(text):
+    """
+    Formats the response for streaming, handling partial tags and incomplete content
+    """
+    # Initialize formatted sections
+    formatted_text = ""
+    
+    # Check if thought section has started
+    if "<|begin_of_thought|>" in text:
+        formatted_text += "### Internal Monologue\n\n"
+        # Get content after thought tag
+        thought_content = text.split("<|begin_of_thought|>")[-1]
+        # If thought section has ended, only take content before end tag
+        if "<|end_of_thought|>" in thought_content:
+            thought_content = thought_content.split("<|end_of_thought|>")[0]
+        formatted_text += thought_content + "\n\n"
+    
+    # Check if solution section has started
+    if "<|begin_of_solution|>" in text:
+        formatted_text += "### Solution\n\n"
+        # Get content after solution tag
+        solution_content = text.split("<|begin_of_solution|>")[-1]
+        # If solution section has ended, only take content before end tag
+        if "<|end_of_solution|>" in solution_content:
+            solution_content = solution_content.split("<|end_of_solution|>")[0]
+        formatted_text += solution_content
+    
+    return formatted_text.strip()
+
+def format_final_response(text):
+    """
+    Formats the final complete response, removing all tags
+    """
+    # Extract thought content
+    thought_match = re.search(r'<\|begin_of_thought\|>(.*?)<\|end_of_thought\|>', text, re.DOTALL)
+    thought_content = thought_match.group(1).strip() if thought_match else ""
+
+    # Extract solution content
+    solution_match = re.search(r'<\|begin_of_solution\|>(.*?)<\|end_of_solution\|>', text, re.DOTALL)
+    solution_content = solution_match.group(1).strip() if solution_match else ""
+
+    # Format with headers
+    formatted_text = ""
+    if thought_content:
+        formatted_text += "### Internal Monologue\n\n" + thought_content + "\n\n"
+    if solution_content:
+        formatted_text += "### Solution\n\n" + solution_content
+
+    return formatted_text.strip()
 
 # Sidebar for configuration
 with st.sidebar:
@@ -150,7 +201,6 @@ if prompt := st.chat_input("What would you like to ask?"):
         {"role": "user", "content": [{"text": prompt}]},
     ]
     
-    # Separate inferenceConfig and additionalModelRequestFields
     inference_config = {
         "maxTokens": max_tokens,
         "topP": top_p,
@@ -179,12 +229,14 @@ if prompt := st.chat_input("What would you like to ask?"):
         ):
             if chunk:
                 full_response += chunk
-                # Update the response in real-time
-                response_placeholder.markdown(full_response + "▌")
+                # Format the partial response for streaming
+                formatted_response = format_streaming_response(full_response)
+                response_placeholder.markdown(formatted_response + "▌")
         
-        # Update the final response without the cursor
-        response_placeholder.markdown(full_response)
+        # Format the final response without the cursor
+        formatted_final_response = format_final_response(full_response)
+        response_placeholder.markdown(formatted_final_response)
         
         # Add the complete response to chat history
         if full_response:
-            st.session_state.messages.append({"role": "assistant", "content": full_response})
+            st.session_state.messages.append({"role": "assistant", "content": formatted_final_response})
