@@ -16,39 +16,57 @@ MODEL_OPTIONS = {
 st.set_page_config(page_title="Amazon Bedrock Reasoning Capability Test Platform", layout="wide")
 st.title("💬 Amazon Bedrock Reasoning Capability Test Platform")
 
-def format_streaming_response(text):
+def format_streaming_response(text, is_reasoning_prompt=True):
     """
     Formats the response for streaming, handling partial tags and incomplete content
     """
-    # Initialize formatted sections
+    if not is_reasoning_prompt:
+        return text + "▌"
+        
+    # Initialize formatted text
     formatted_text = ""
+    current_text = text
     
     # Check if thought section has started
-    if "<|begin_of_thought|>" in text:
+    if "<|begin_of_thought|>" in current_text:
         formatted_text += "### Internal Monologue\n\n"
-        # Get content after thought tag
-        thought_content = text.split("<|begin_of_thought|>")[-1]
-        # If thought section has ended, only take content before end tag
-        if "<|end_of_thought|>" in thought_content:
-            thought_content = thought_content.split("<|end_of_thought|>")[0]
-        formatted_text += thought_content + "\n\n"
+        # Split at the beginning of thought
+        parts = current_text.split("<|begin_of_thought|>", 1)
+        if len(parts) > 1:
+            thought_content = parts[1]
+            # Check if thought section has ended
+            if "<|end_of_thought|>" in thought_content:
+                # Get content before end tag
+                thought_content = thought_content.split("<|end_of_thought|>")[0]
+                current_text = current_text.split("<|end_of_thought|>", 1)[-1]
+            formatted_text += thought_content + "\n\n"
     
     # Check if solution section has started
-    if "<|begin_of_solution|>" in text:
+    if "<|begin_of_solution|>" in current_text:
         formatted_text += "### Solution\n\n"
-        # Get content after solution tag
-        solution_content = text.split("<|begin_of_solution|>")[-1]
-        # If solution section has ended, only take content before end tag
-        if "<|end_of_solution|>" in solution_content:
-            solution_content = solution_content.split("<|end_of_solution|>")[0]
-        formatted_text += solution_content
+        # Split at the beginning of solution
+        parts = current_text.split("<|begin_of_solution|>", 1)
+        if len(parts) > 1:
+            solution_content = parts[1]
+            # Check if solution section has ended
+            if "<|end_of_solution|>" in solution_content:
+                # Get content before end tag
+                solution_content = solution_content.split("<|end_of_solution|>")[0]
+            formatted_text += solution_content
     
-    return formatted_text.strip()
+    # If no sections have started yet, just return the text
+    if formatted_text == "":
+        return current_text + "▌"
+        
+    return formatted_text.strip() + "▌"
 
-def format_final_response(text):
+def format_final_response(text, is_reasoning_prompt=True):
     """
     Formats the final complete response, removing all tags
     """
+    if not is_reasoning_prompt:
+        return text
+        
     # Extract thought content
     thought_match = re.search(r'<\|begin_of_thought\|>(.*?)<\|end_of_thought\|>', text, re.DOTALL)
     thought_content = thought_match.group(1).strip() if thought_match else ""
@@ -64,7 +82,38 @@ def format_final_response(text):
     if solution_content:
         formatted_text += "### Solution\n\n" + solution_content
 
-    return formatted_text.strip()
+    return formatted_text.strip() if formatted_text else text
+
+def stream_response(client, model_id, messages, system_prompt, inference_config, additional_model_request_fields):
+    """
+    Streams the response from the model
+    """
+    system_prompts = [{"text": system_prompt}]
+    
+    try:
+        response = client.converse_stream(
+            modelId=model_id,
+            messages=messages,
+            system=system_prompts,
+            inferenceConfig=inference_config,
+            additionalModelRequestFields=additional_model_request_fields
+        )
+        
+        stream = response.get('stream')
+        if stream:
+            full_response = ""
+            
+            for event in stream:
+                if 'contentBlockDelta' in event:
+                    chunk = event['contentBlockDelta']['delta']['text']
+                    full_response += chunk
+                    yield chunk
+                    
+            return full_response
+                    
+    except Exception as e:
+        st.error(f"An error occurred during streaming: {str(e)}")
+        return None
 
 # Sidebar for configuration
 with st.sidebar:
@@ -158,37 +207,6 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-def stream_response(client, model_id, messages, system_prompt, inference_config, additional_model_request_fields):
-    """
-    Streams the response from the model
-    """
-    system_prompts = [{"text": system_prompt}]
-    
-    try:
-        response = client.converse_stream(
-            modelId=model_id,
-            messages=messages,
-            system=system_prompts,
-            inferenceConfig=inference_config,
-            additionalModelRequestFields=additional_model_request_fields
-        )
-        
-        stream = response.get('stream')
-        if stream:
-            full_response = ""
-            
-            for event in stream:
-                if 'contentBlockDelta' in event:
-                    chunk = event['contentBlockDelta']['delta']['text']
-                    full_response += chunk
-                    yield chunk
-                    
-            return full_response
-                    
-    except Exception as e:
-        st.error(f"An error occurred during streaming: {str(e)}")
-        return None
-
 # User input
 if prompt := st.chat_input("What would you like to ask?"):
     # Add user message to history
@@ -213,6 +231,9 @@ if prompt := st.chat_input("What would you like to ask?"):
         }
     }
 
+    # Check if reasoning prompt is selected
+    is_reasoning_prompt = (prompt_choice == "Reasoning Prompt")
+
     # Create a placeholder for the streaming response
     with st.chat_message("assistant"):
         response_placeholder = st.empty()
@@ -230,11 +251,11 @@ if prompt := st.chat_input("What would you like to ask?"):
             if chunk:
                 full_response += chunk
                 # Format the partial response for streaming
-                formatted_response = format_streaming_response(full_response)
-                response_placeholder.markdown(formatted_response + "▌")
+                formatted_response = format_streaming_response(full_response, is_reasoning_prompt)
+                response_placeholder.markdown(formatted_response)
         
         # Format the final response without the cursor
-        formatted_final_response = format_final_response(full_response)
+        formatted_final_response = format_final_response(full_response, is_reasoning_prompt)
         response_placeholder.markdown(formatted_final_response)
         
         # Add the complete response to chat history
