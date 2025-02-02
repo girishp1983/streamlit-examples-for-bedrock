@@ -16,21 +16,58 @@ MODEL_OPTIONS = {
 st.set_page_config(page_title="Amazon Bedrock Reasoning Capability Test Platform", layout="wide")
 st.title("💬 Amazon Bedrock Reasoning Capability Test Platform")
 
-def check_missing_solution_end(text):
+def check_missing_tags(text):
     """
-    Check specifically for missing end_of_solution tag when begin_of_solution is present
+    Check for missing end tags when their corresponding begin tags are present
     """
+    begin_thought = "<|begin_of_thought|>" in text
+    end_thought = "<|end_of_thought|>" in text
     begin_solution = "<|begin_of_solution|>" in text
     end_solution = "<|end_of_solution|>" in text
     
-    return begin_solution and not end_solution
+    missing_thought = begin_thought and not end_thought
+    missing_solution = begin_solution and not end_solution
+    
+    return missing_thought or missing_solution
+
+def format_latex(text):
+    """
+    Format LaTeX expressions for proper rendering in Streamlit
+    Converts inline LaTeX wrapped in $$ to latex notation
+    """
+    # Replace double dollar inline latex with streamlit latex
+    text = re.sub(r'\$\$(.*?)\$\$', r':latex:`\1`', text)
+    
+    # Handle multiline LaTeX blocks
+    lines = text.split('\n')
+    formatted_lines = []
+    in_latex_block = False
+    latex_content = []
+    
+    for line in lines:
+        if line.strip() == '$$' and not in_latex_block:
+            in_latex_block = True
+            continue
+        elif line.strip() == '$$' and in_latex_block:
+            in_latex_block = False
+            latex_str = '\n'.join(latex_content)
+            formatted_lines.append(f':latex:`{latex_str}`')
+            latex_content = []
+            continue
+            
+        if in_latex_block:
+            latex_content.append(line)
+        else:
+            formatted_lines.append(line)
+            
+    return '\n'.join(formatted_lines)
 
 def format_streaming_response(text, is_reasoning_prompt=True):
     """
     Formats the response for streaming, handling partial tags and incomplete content
     """
     if not is_reasoning_prompt:
-        return text + "▌"
+        return format_latex(text) + "▌"
         
     # Initialize formatted text
     formatted_text = ""
@@ -48,7 +85,7 @@ def format_streaming_response(text, is_reasoning_prompt=True):
                 # Get content before end tag
                 thought_content = thought_content.split("<|end_of_thought|>")[0]
                 current_text = current_text.split("<|end_of_thought|>", 1)[-1]
-            formatted_text += thought_content + "\n\n"
+            formatted_text += format_latex(thought_content) + "\n\n"
     
     # Check if solution section has started
     if "<|begin_of_solution|>" in current_text:
@@ -61,24 +98,24 @@ def format_streaming_response(text, is_reasoning_prompt=True):
             if "<|end_of_solution|>" in solution_content:
                 # Get content before end tag
                 solution_content = solution_content.split("<|end_of_solution|>")[0]
-            formatted_text += solution_content
+            formatted_text += format_latex(solution_content)
     
     # If no sections have started yet, just return the text
     if formatted_text == "":
-        return current_text + "▌"
+        return format_latex(current_text) + "▌"
     
-    # Check for missing solution end tag and add warning if needed
-    if is_reasoning_prompt and check_missing_solution_end(text):
-        formatted_text += "\n\n⚠️ *Note: Sorry I could not complete my thought process😕. Out of Bedrock tokens. Some sections may be incomplete.*"
-        
     return formatted_text.strip() + "▌"
 
-def format_final_response(text, is_reasoning_prompt=True):
+def format_final_response(text, is_reasoning_prompt=True, is_stream_complete=False):
     """
     Formats the final complete response, removing all tags
+    Parameters:
+    - text: The response text to format
+    - is_reasoning_prompt: Whether this is a reasoning prompt response
+    - is_stream_complete: Whether the streaming has completed
     """
     if not is_reasoning_prompt:
-        return text
+        return format_latex(text)
         
     # Extract thought content
     thought_match = re.search(r'<\|begin_of_thought\|>(.*?)(?:<\|end_of_thought\|>|$)', text, re.DOTALL)
@@ -91,15 +128,15 @@ def format_final_response(text, is_reasoning_prompt=True):
     # Format with headers
     formatted_text = ""
     if thought_content:
-        formatted_text += "### Nova Lite Reasoning for you - I am not perfect, but will try my best🫡\n\n" + thought_content + "\n\n"
+        formatted_text += "### Nova Lite Reasoning for you - I am not perfect, but will try my best🫡\n\n" + format_latex(thought_content) + "\n\n"
     if solution_content:
-        formatted_text += "### Solution\n\n" + solution_content
+        formatted_text += "### Solution\n\n" + format_latex(solution_content)
 
-    # Check for missing solution end tag and add warning if needed
-    if is_reasoning_prompt and check_missing_solution_end(text):
+    # Only check for missing tags if streaming is complete
+    if is_reasoning_prompt and is_stream_complete and check_missing_tags(text):
         formatted_text += "\n\n⚠️ *Note: Sorry I could not complete my thought process😕. Out of Bedrock tokens. Some sections may be incomplete.*"
 
-    return formatted_text.strip() if formatted_text else text
+    return formatted_text.strip() if formatted_text else format_latex(text)
 
 def stream_response(client, model_id, messages, system_prompt, inference_config, additional_model_request_fields):
     """
@@ -267,12 +304,12 @@ if prompt := st.chat_input("What would you like to ask?"):
         ):
             if chunk:
                 full_response += chunk
-                # Format the partial response for streaming
+                # Format the partial response for streaming (without completion check)
                 formatted_response = format_streaming_response(full_response, is_reasoning_prompt)
                 response_placeholder.markdown(formatted_response)
         
-        # Format the final response without the cursor
-        formatted_final_response = format_final_response(full_response, is_reasoning_prompt)
+        # After streaming is complete, format the final response with completion check
+        formatted_final_response = format_final_response(full_response, is_reasoning_prompt, is_stream_complete=True)
         response_placeholder.markdown(formatted_final_response)
         
         # Add the complete response to chat history
