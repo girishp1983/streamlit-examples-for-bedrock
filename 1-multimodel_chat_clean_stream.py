@@ -32,13 +32,45 @@ def check_missing_tags(text):
 
 def format_latex(text):
     """
-    Format LaTeX expressions for proper rendering in Streamlit
-    Converts inline LaTeX wrapped in $$ to latex notation
+    Format LaTeX expressions for proper rendering in Streamlit with enhanced readability
     """
-    # Replace double dollar inline latex with streamlit latex
-    text = re.sub(r'\$\$(.*?)\$\$', r':latex:`\1`', text)
+    def replace_math_symbols(match):
+        expr = match.group(1)
+        # Common mathematical symbols and their readable forms
+        expr = re.sub(r'\\cup', '∪', expr)  # union
+        expr = re.sub(r'\\cap', '∩', expr)  # intersection
+        expr = re.sub(r'\\subset', '⊂', expr)  # subset
+        expr = re.sub(r'\\supset', '⊃', expr)  # superset
+        expr = re.sub(r'\\in', '∈', expr)  # element of
+        expr = re.sub(r'\\notin', '∉', expr)  # not element of
+        expr = re.sub(r'\\emptyset', '∅', expr)  # empty set
+        expr = re.sub(r'\\forall', '∀', expr)  # for all
+        expr = re.sub(r'\\exists', '∃', expr)  # exists
+        expr = re.sub(r'\\neg', '¬', expr)  # negation
+        expr = re.sub(r'\\wedge', '∧', expr)  # and
+        expr = re.sub(r'\\vee', '∨', expr)  # or
+        expr = re.sub(r'\\leq', '≤', expr)  # less than or equal
+        expr = re.sub(r'\\geq', '≥', expr)  # greater than or equal
+        expr = re.sub(r'\\neq', '≠', expr)  # not equal
+        expr = re.sub(r'\\approx', '≈', expr)  # approximately equal
+        expr = re.sub(r'\\cdot', '·', expr)  # dot multiplication
+        expr = re.sub(r'\\times', '×', expr)  # multiplication
+        expr = re.sub(r'\\div', '÷', expr)  # division
+        expr = re.sub(r'\\pm', '±', expr)  # plus minus
+        expr = re.sub(r'\\infty', '∞', expr)  # infinity
+        expr = re.sub(r'\\sum', '∑', expr)  # summation
+        expr = re.sub(r'\\prod', '∏', expr)  # product
+        expr = re.sub(r'\\rightarrow', '→', expr)  # right arrow
+        expr = re.sub(r'\\leftarrow', '←', expr)  # left arrow
+        expr = re.sub(r'\\leftrightarrow', '↔', expr)  # double arrow
+        # Set notation specific replacements
+        expr = re.sub(r'\|([^|]+)\|', 'size(\\1)', expr)  # set size notation
+        return expr
+
+    # Process inline LaTeX
+    text = re.sub(r'\$\$(.*?)\$\$', lambda m: f':latex:`{replace_math_symbols(m.group(1))}`', text)
     
-    # Handle multiline LaTeX blocks
+    # Process multiline LaTeX blocks
     lines = text.split('\n')
     formatted_lines = []
     in_latex_block = False
@@ -51,7 +83,7 @@ def format_latex(text):
         elif line.strip() == '$$' and in_latex_block:
             in_latex_block = False
             latex_str = '\n'.join(latex_content)
-            formatted_lines.append(f':latex:`{latex_str}`')
+            formatted_lines.append(f':latex:`{replace_math_symbols(latex_str)}`')
             latex_content = []
             continue
             
@@ -59,15 +91,31 @@ def format_latex(text):
             latex_content.append(line)
         else:
             formatted_lines.append(line)
-            
+    
     return '\n'.join(formatted_lines)
+
+def process_math_expressions(text):
+    """
+    Process mathematical expressions to make them more readable
+    """
+    # Replace set operations with natural language
+    text = re.sub(r'size\(([^)]+)\)', lambda m: f"the size of {m.group(1)}", text)
+    text = re.sub(r'([A-Za-z])\s*∪\s*([A-Za-z])', r'\1 union \2', text)
+    text = re.sub(r'([A-Za-z])\s*∩\s*([A-Za-z])', r'\1 intersect \2', text)
+    text = re.sub(r'([A-Za-z])\s*⊂\s*([A-Za-z])', r'\1 is a subset of \2', text)
+    text = re.sub(r'([A-Za-z])\s*⊃\s*([A-Za-z])', r'\1 is a superset of \2', text)
+    text = re.sub(r'([A-Za-z])\s*∈\s*([A-Za-z])', r'\1 is an element of \2', text)
+    text = re.sub(r'([A-Za-z])\s*∉\s*([A-Za-z])', r'\1 is not an element of \2', text)
+    
+    return text
 
 def format_streaming_response(text, is_reasoning_prompt=True):
     """
     Formats the response for streaming, handling partial tags and incomplete content
     """
     if not is_reasoning_prompt:
-        return format_latex(text) + "▌"
+        formatted_text = format_latex(text)
+        return process_math_expressions(formatted_text) + "▌"
         
     # Initialize formatted text
     formatted_text = ""
@@ -86,6 +134,7 @@ def format_streaming_response(text, is_reasoning_prompt=True):
                 thought_content = thought_content.split("<|end_of_thought|>")[0]
                 current_text = current_text.split("<|end_of_thought|>", 1)[-1]
             formatted_text += format_latex(thought_content) + "\n\n"
+            formatted_text = process_math_expressions(formatted_text)
     
     # Check if solution section has started
     if "<|begin_of_solution|>" in current_text:
@@ -99,23 +148,22 @@ def format_streaming_response(text, is_reasoning_prompt=True):
                 # Get content before end tag
                 solution_content = solution_content.split("<|end_of_solution|>")[0]
             formatted_text += format_latex(solution_content)
+            formatted_text = process_math_expressions(formatted_text)
     
     # If no sections have started yet, just return the text
     if formatted_text == "":
-        return format_latex(current_text) + "▌"
+        formatted_text = format_latex(current_text)
+        return process_math_expressions(formatted_text) + "▌"
     
     return formatted_text.strip() + "▌"
 
 def format_final_response(text, is_reasoning_prompt=True, is_stream_complete=False):
     """
     Formats the final complete response, removing all tags
-    Parameters:
-    - text: The response text to format
-    - is_reasoning_prompt: Whether this is a reasoning prompt response
-    - is_stream_complete: Whether the streaming has completed
     """
     if not is_reasoning_prompt:
-        return format_latex(text)
+        formatted_text = format_latex(text)
+        return process_math_expressions(formatted_text)
         
     # Extract thought content
     thought_match = re.search(r'<\|begin_of_thought\|>(.*?)(?:<\|end_of_thought\|>|$)', text, re.DOTALL)
@@ -128,16 +176,24 @@ def format_final_response(text, is_reasoning_prompt=True, is_stream_complete=Fal
     # Format with headers
     formatted_text = ""
     if thought_content:
-        formatted_text += "### Nova Lite Reasoning for you - I am not perfect, but will try my best🫡\n\n" + format_latex(thought_content) + "\n\n"
+        formatted_thought = format_latex(thought_content)
+        formatted_thought = process_math_expressions(formatted_thought)
+        formatted_text += "### Nova Lite Reasoning for you - I am not perfect, but will try my best🫡\n\n" + formatted_thought + "\n\n"
     if solution_content:
-        formatted_text += "### Solution\n\n" + format_latex(solution_content)
+        formatted_solution = format_latex(solution_content)
+        formatted_solution = process_math_expressions(formatted_solution)
+        formatted_text += "### Solution\n\n" + formatted_solution
 
     # Only check for missing tags if streaming is complete
     if is_reasoning_prompt and is_stream_complete and check_missing_tags(text):
         formatted_text += "\n\n⚠️ *Note: Sorry I could not complete my thought process😕. Out of Bedrock tokens. Some sections may be incomplete.*"
 
-    return formatted_text.strip() if formatted_text else format_latex(text)
-
+    if not formatted_text:
+        formatted_text = format_latex(text)
+        formatted_text = process_math_expressions(formatted_text)
+    
+    return formatted_text.strip()
+    
 def stream_response(client, model_id, messages, system_prompt, inference_config, additional_model_request_fields):
     """
     Streams the response from the model
