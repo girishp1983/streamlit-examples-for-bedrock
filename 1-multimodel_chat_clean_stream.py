@@ -2,7 +2,6 @@ import json
 import boto3
 import streamlit as st
 from botocore.config import Config
-import re
 
 # Model configuration
 MODEL_OPTIONS = {
@@ -15,215 +14,6 @@ MODEL_OPTIONS = {
 # App configuration
 st.set_page_config(page_title="Amazon Bedrock Reasoning Capability Test Platform", layout="wide")
 st.title("💬 Amazon Bedrock Reasoning Capability Test Platform")
-
-def check_missing_tags(text):
-    """
-    Check for missing end tags when their corresponding begin tags are present
-    """
-    begin_thought = "<|begin_of_thought|>" in text
-    end_thought = "<|end_of_thought|>" in text
-    begin_solution = "<|begin_of_solution|>" in text
-    end_solution = "<|end_of_solution|>" in text
-    
-    missing_thought = begin_thought and not end_thought
-    missing_solution = begin_solution and not end_solution
-    
-    return missing_thought or missing_solution
-
-def format_latex(text):
-    """
-    Format LaTeX expressions for proper rendering in Streamlit with enhanced readability
-    """
-    def replace_math_symbols(match):
-        expr = match.group(1)
-        # Common mathematical symbols and their readable forms
-        expr = re.sub(r'\\cup', '∪', expr)  # union
-        expr = re.sub(r'\\cap', '∩', expr)  # intersection
-        expr = re.sub(r'\\subset', '⊂', expr)  # subset
-        expr = re.sub(r'\\supset', '⊃', expr)  # superset
-        expr = re.sub(r'\\in', '∈', expr)  # element of
-        expr = re.sub(r'\\notin', '∉', expr)  # not element of
-        expr = re.sub(r'\\emptyset', '∅', expr)  # empty set
-        expr = re.sub(r'\\forall', '∀', expr)  # for all
-        expr = re.sub(r'\\exists', '∃', expr)  # exists
-        expr = re.sub(r'\\neg', '¬', expr)  # negation
-        expr = re.sub(r'\\wedge', '∧', expr)  # and
-        expr = re.sub(r'\\vee', '∨', expr)  # or
-        expr = re.sub(r'\\leq', '≤', expr)  # less than or equal
-        expr = re.sub(r'\\geq', '≥', expr)  # greater than or equal
-        expr = re.sub(r'\\neq', '≠', expr)  # not equal
-        expr = re.sub(r'\\approx', '≈', expr)  # approximately equal
-        expr = re.sub(r'\\cdot', '·', expr)  # dot multiplication
-        expr = re.sub(r'\\times', '×', expr)  # multiplication
-        expr = re.sub(r'\\div', '÷', expr)  # division
-        expr = re.sub(r'\\pm', '±', expr)  # plus minus
-        expr = re.sub(r'\\infty', '∞', expr)  # infinity
-        expr = re.sub(r'\\sum', '∑', expr)  # summation
-        expr = re.sub(r'\\prod', '∏', expr)  # product
-        expr = re.sub(r'\\rightarrow', '→', expr)  # right arrow
-        expr = re.sub(r'\\leftarrow', '←', expr)  # left arrow
-        expr = re.sub(r'\\leftrightarrow', '↔', expr)  # double arrow
-        # Set notation specific replacements
-        expr = re.sub(r'\|([^|]+)\|', 'size(\\1)', expr)  # set size notation
-        return expr
-
-    # Process inline LaTeX
-    text = re.sub(r'\$\$(.*?)\$\$', lambda m: f':latex:`{replace_math_symbols(m.group(1))}`', text)
-    
-    # Process multiline LaTeX blocks
-    lines = text.split('\n')
-    formatted_lines = []
-    in_latex_block = False
-    latex_content = []
-    
-    for line in lines:
-        if line.strip() == '$$' and not in_latex_block:
-            in_latex_block = True
-            continue
-        elif line.strip() == '$$' and in_latex_block:
-            in_latex_block = False
-            latex_str = '\n'.join(latex_content)
-            formatted_lines.append(f':latex:`{replace_math_symbols(latex_str)}`')
-            latex_content = []
-            continue
-            
-        if in_latex_block:
-            latex_content.append(line)
-        else:
-            formatted_lines.append(line)
-    
-    return '\n'.join(formatted_lines)
-
-def process_math_expressions(text):
-    """
-    Process mathematical expressions to make them more readable
-    """
-    # Replace set operations with natural language
-    text = re.sub(r'size\(([^)]+)\)', lambda m: f"the size of {m.group(1)}", text)
-    text = re.sub(r'([A-Za-z])\s*∪\s*([A-Za-z])', r'\1 union \2', text)
-    text = re.sub(r'([A-Za-z])\s*∩\s*([A-Za-z])', r'\1 intersect \2', text)
-    text = re.sub(r'([A-Za-z])\s*⊂\s*([A-Za-z])', r'\1 is a subset of \2', text)
-    text = re.sub(r'([A-Za-z])\s*⊃\s*([A-Za-z])', r'\1 is a superset of \2', text)
-    text = re.sub(r'([A-Za-z])\s*∈\s*([A-Za-z])', r'\1 is an element of \2', text)
-    text = re.sub(r'([A-Za-z])\s*∉\s*([A-Za-z])', r'\1 is not an element of \2', text)
-    
-    return text
-
-def format_streaming_response(text, is_reasoning_prompt=True):
-    """
-    Formats the response for streaming, handling partial tags and incomplete content
-    """
-    if not is_reasoning_prompt:
-        formatted_text = format_latex(text)
-        return process_math_expressions(formatted_text) + "▌"
-        
-    # Initialize formatted text
-    formatted_text = ""
-    current_text = text
-    
-    # Check if thought section has started
-    if "<|begin_of_thought|>" in current_text:
-        formatted_text += "### Nova Lite Reasoning for you - I am not perfect, but will try my best🫡\n\n"
-        # Split at the beginning of thought
-        parts = current_text.split("<|begin_of_thought|>", 1)
-        if len(parts) > 1:
-            thought_content = parts[1]
-            # Check if thought section has ended
-            if "<|end_of_thought|>" in thought_content:
-                # Get content before end tag
-                thought_content = thought_content.split("<|end_of_thought|>")[0]
-                current_text = current_text.split("<|end_of_thought|>", 1)[-1]
-            formatted_text += format_latex(thought_content) + "\n\n"
-            formatted_text = process_math_expressions(formatted_text)
-    
-    # Check if solution section has started
-    if "<|begin_of_solution|>" in current_text:
-        formatted_text += "### Solution\n\n"
-        # Split at the beginning of solution
-        parts = current_text.split("<|begin_of_solution|>", 1)
-        if len(parts) > 1:
-            solution_content = parts[1]
-            # Check if solution section has ended
-            if "<|end_of_solution|>" in solution_content:
-                # Get content before end tag
-                solution_content = solution_content.split("<|end_of_solution|>")[0]
-            formatted_text += format_latex(solution_content)
-            formatted_text = process_math_expressions(formatted_text)
-    
-    # If no sections have started yet, just return the text
-    if formatted_text == "":
-        formatted_text = format_latex(current_text)
-        return process_math_expressions(formatted_text) + "▌"
-    
-    return formatted_text.strip() + "▌"
-
-def format_final_response(text, is_reasoning_prompt=True, is_stream_complete=False):
-    """
-    Formats the final complete response, removing all tags
-    """
-    if not is_reasoning_prompt:
-        formatted_text = format_latex(text)
-        return process_math_expressions(formatted_text)
-        
-    # Extract thought content
-    thought_match = re.search(r'<\|begin_of_thought\|>(.*?)(?:<\|end_of_thought\|>|$)', text, re.DOTALL)
-    thought_content = thought_match.group(1).strip() if thought_match else ""
-
-    # Extract solution content
-    solution_match = re.search(r'<\|begin_of_solution\|>(.*?)(?:<\|end_of_solution\|>|$)', text, re.DOTALL)
-    solution_content = solution_match.group(1).strip() if solution_match else ""
-
-    # Format with headers
-    formatted_text = ""
-    if thought_content:
-        formatted_thought = format_latex(thought_content)
-        formatted_thought = process_math_expressions(formatted_thought)
-        formatted_text += "### Nova Lite Reasoning for you - I am not perfect, but will try my best🫡\n\n" + formatted_thought + "\n\n"
-    if solution_content:
-        formatted_solution = format_latex(solution_content)
-        formatted_solution = process_math_expressions(formatted_solution)
-        formatted_text += "### Solution\n\n" + formatted_solution
-
-    # Only check for missing tags if streaming is complete
-    if is_reasoning_prompt and is_stream_complete and check_missing_tags(text):
-        formatted_text += "\n\n⚠️ *Note: Sorry I could not complete my thought process😕. Out of Bedrock tokens. Some sections may be incomplete.*"
-
-    if not formatted_text:
-        formatted_text = format_latex(text)
-        formatted_text = process_math_expressions(formatted_text)
-    
-    return formatted_text.strip()
-    
-def stream_response(client, model_id, messages, system_prompt, inference_config, additional_model_request_fields):
-    """
-    Streams the response from the model
-    """
-    system_prompts = [{"text": system_prompt}]
-    
-    try:
-        response = client.converse_stream(
-            modelId=model_id,
-            messages=messages,
-            system=system_prompts,
-            inferenceConfig=inference_config,
-            additionalModelRequestFields=additional_model_request_fields
-        )
-        
-        stream = response.get('stream')
-        if stream:
-            full_response = ""
-            
-            for event in stream:
-                if 'contentBlockDelta' in event:
-                    chunk = event['contentBlockDelta']['delta']['text']
-                    full_response += chunk
-                    yield chunk
-                    
-            return full_response
-                    
-    except Exception as e:
-        st.error(f"An error occurred during streaming: {str(e)}")
-        return None
 
 # Sidebar for configuration
 with st.sidebar:
@@ -317,6 +107,37 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
+def stream_response(client, model_id, messages, system_prompt, inference_config, additional_model_request_fields):
+    """
+    Streams the response from the model
+    """
+    system_prompts = [{"text": system_prompt}]
+    
+    try:
+        response = client.converse_stream(
+            modelId=model_id,
+            messages=messages,
+            system=system_prompts,
+            inferenceConfig=inference_config,
+            additionalModelRequestFields=additional_model_request_fields
+        )
+        
+        stream = response.get('stream')
+        if stream:
+            full_response = ""
+            
+            for event in stream:
+                if 'contentBlockDelta' in event:
+                    chunk = event['contentBlockDelta']['delta']['text']
+                    full_response += chunk
+                    yield chunk
+                    
+            return full_response
+                    
+    except Exception as e:
+        st.error(f"An error occurred during streaming: {str(e)}")
+        return None
+
 # User input
 if prompt := st.chat_input("What would you like to ask?"):
     # Add user message to history
@@ -329,6 +150,7 @@ if prompt := st.chat_input("What would you like to ask?"):
         {"role": "user", "content": [{"text": prompt}]},
     ]
     
+    # Separate inferenceConfig and additionalModelRequestFields
     inference_config = {
         "maxTokens": max_tokens,
         "topP": top_p,
@@ -340,9 +162,6 @@ if prompt := st.chat_input("What would you like to ask?"):
             "topK": top_k
         }
     }
-
-    # Check if reasoning prompt is selected
-    is_reasoning_prompt = (prompt_choice == "Reasoning Prompt")
 
     # Create a placeholder for the streaming response
     with st.chat_message("assistant"):
@@ -360,14 +179,12 @@ if prompt := st.chat_input("What would you like to ask?"):
         ):
             if chunk:
                 full_response += chunk
-                # Format the partial response for streaming (without completion check)
-                formatted_response = format_streaming_response(full_response, is_reasoning_prompt)
-                response_placeholder.markdown(formatted_response)
+                # Update the response in real-time
+                response_placeholder.markdown(full_response + "▌")
         
-        # After streaming is complete, format the final response with completion check
-        formatted_final_response = format_final_response(full_response, is_reasoning_prompt, is_stream_complete=True)
-        response_placeholder.markdown(formatted_final_response)
+        # Update the final response without the cursor
+        response_placeholder.markdown(full_response)
         
         # Add the complete response to chat history
         if full_response:
-            st.session_state.messages.append({"role": "assistant", "content": formatted_final_response})
+            st.session_state.messages.append({"role": "assistant", "content": full_response})
