@@ -111,24 +111,30 @@ for message in st.session_state.messages:
 def render_text_with_math(text, container):
     """
     Processes the response text to:
-      - Detect math expressions and render them appropriately.
-      - Leave the LLM markers (<|begin_of_thought|>, <|end_of_thought|>, <|begin_of_solution|>, and <|end_of_solution|>) intact.
+      - Detect inline math expressions written in parentheses that contain LaTeX commands,
+        and wrap them with $...$ so they render correctly.
+      - Detect block math expressions on lines that start with '[' and end with ']',
+        remove the square brackets and render the content using st.latex.
+      - Leave the LLM markers (<|begin_of_thought|>, <|end_of_thought|>, <|begin_of_solution|>, <|end_of_solution|>) intact.
     """
-    # Process the text line by line
     lines = text.splitlines()
     for line in lines:
         stripped = line.strip()
         if not stripped:
             container.markdown("")  # Preserve blank lines
-        # Check if the entire line is a block math expression.
-        # We assume that if a line starts with '[' and ends with ']' and contains a LaTeX command (a backslash),
-        # it's intended as a math expression.
+        # Detect block math: if the entire line is enclosed in square brackets and contains a backslash
         elif stripped.startswith('[') and stripped.endswith(']') and '\\' in stripped:
-            # Remove the outer square brackets and render as LaTeX
-            math_expr = stripped[1:-1].strip()
+            math_expr = stripped[1:-1].strip()  # Remove the square brackets
             container.latex(math_expr)
         else:
-            container.markdown(line)
+            # Replace inline math patterns: look for parentheses that contain at least one backslash.
+            def inline_math_repl(match):
+                content = match.group(0)  # e.g., "(\pi_\theta(a|s))"
+                inner = content[1:-1]  # Remove the outer parentheses
+                return f"${inner}$"
+            # This regex finds parentheses without nested ones containing a backslash.
+            processed_line = re.sub(r'\([^()]*\\[^()]*\)', inline_math_repl, line)
+            container.markdown(processed_line)
 
 def stream_response(client, model_id, messages, system_prompt, inference_config, additional_model_request_fields):
     """
@@ -214,4 +220,5 @@ if prompt := st.chat_input("What would you like to ask?"):
         # Add the complete response to chat history
         if full_response:
             st.session_state.messages.append({"role": "assistant", "content": full_response})
+
 
