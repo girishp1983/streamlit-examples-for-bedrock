@@ -1,5 +1,5 @@
 import json
-import re  # Added for regex processing of math expressions
+import re  # Added for regex processing of math expressions and LLM markers
 import boto3
 import streamlit as st
 from botocore.config import Config
@@ -110,25 +110,25 @@ for message in st.session_state.messages:
 
 def render_text_with_math(text, container):
     """
-    Splits the text into segments based on math delimiters and renders each segment.
-    Math expressions enclosed in $$...$$ or $...$ are rendered using st.latex.
-    Non-math text is rendered using st.markdown.
+    Processes the response text to:
+      - Detect math expressions and render them appropriately.
+      - Leave the LLM markers (<|begin_of_thought|>, <|end_of_thought|>, <|begin_of_solution|>, and <|end_of_solution|>) intact.
     """
-    # Regular expression to match math expressions ($...$ or $$...$$)
-    pattern = re.compile(r'(\$\$.*?\$\$|\$.*?\$)', re.DOTALL)
-    parts = pattern.split(text)
-    for part in parts:
-        if part.startswith('$$') and part.endswith('$$'):
-            # Render display math (remove the delimiters)
-            math_expr = part[2:-2].strip()
-            container.latex(math_expr)
-        elif part.startswith('$') and part.endswith('$'):
-            # Render inline math (remove the delimiters)
-            math_expr = part[1:-1].strip()
+    # Process the text line by line
+    lines = text.splitlines()
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            container.markdown("")  # Preserve blank lines
+        # Check if the entire line is a block math expression.
+        # We assume that if a line starts with '[' and ends with ']' and contains a LaTeX command (a backslash),
+        # it's intended as a math expression.
+        elif stripped.startswith('[') and stripped.endswith(']') and '\\' in stripped:
+            # Remove the outer square brackets and render as LaTeX
+            math_expr = stripped[1:-1].strip()
             container.latex(math_expr)
         else:
-            if part:
-                container.markdown(part)
+            container.markdown(line)
 
 def stream_response(client, model_id, messages, system_prompt, inference_config, additional_model_request_fields):
     """
@@ -214,3 +214,4 @@ if prompt := st.chat_input("What would you like to ask?"):
         # Add the complete response to chat history
         if full_response:
             st.session_state.messages.append({"role": "assistant", "content": full_response})
+
