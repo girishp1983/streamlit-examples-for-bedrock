@@ -1,8 +1,16 @@
 import json
-import re  # Added for regex processing of math expressions and LLM markers
 import boto3
 import streamlit as st
 from botocore.config import Config
+import re  # Used for post-processing math expressions
+
+# Inject MathJax for rendering LaTeX expressions
+st.markdown(
+    """
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS_HTML" type="text/javascript"></script>
+    """,
+    unsafe_allow_html=True,
+)
 
 # Model configuration
 MODEL_OPTIONS = {
@@ -36,7 +44,7 @@ with st.sidebar:
     if st.session_state.selected_model != MODEL_ID:
         st.session_state.selected_model = MODEL_ID
         st.session_state.messages = []  # Clear chat history
-        st.warning("Model changed. Chat history cleared.")  # Notify user
+        st.warning("Model changed. Chat history cleared.")
     
     # System prompt selection
     st.subheader("System Prompt")
@@ -61,7 +69,7 @@ with st.sidebar:
     if st.session_state.system_prompt != system_prompt:
         st.session_state.system_prompt = system_prompt
         st.session_state.messages = []  # Clear chat history
-        st.warning("System prompt changed. Chat history cleared.")  # Notify user
+        st.warning("System prompt changed. Chat history cleared.")
     
     # Display the selected system prompt in a text area
     system_prompt = st.text_area(
@@ -108,33 +116,42 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-def render_text_with_math(text, container):
+def wrap_math_expressions(text: str) -> str:
     """
-    Processes the response text to:
-      - Detect inline math expressions written in parentheses that contain LaTeX commands,
-        and wrap them with $...$ so they render correctly.
-      - Detect block math expressions on lines that start with '[' and end with ']',
-        remove the square brackets and render the content using st.latex.
-      - Leave the LLM markers (<|begin_of_thought|>, <|end_of_thought|>, <|begin_of_solution|>, <|end_of_solution|>) intact.
+    Scans through the given text and replaces any substring enclosed in matching parentheses
+    that appears to be a LaTeX math expression (heuristically determined by the presence of '\\' or '^')
+    with the same content wrapped in dollar signs for proper MathJax rendering.
     """
-    lines = text.splitlines()
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            container.markdown("")  # Preserve blank lines
-        # Detect block math: if the entire line is enclosed in square brackets and contains a backslash
-        elif stripped.startswith('[') and stripped.endswith(']') and '\\' in stripped:
-            math_expr = stripped[1:-1].strip()  # Remove the square brackets
-            container.latex(math_expr)
-        else:
-            # Replace inline math patterns: look for parentheses that contain at least one backslash.
-            def inline_math_repl(match):
-                content = match.group(0)  # e.g., "(\pi_\theta(a|s))"
-                inner = content[1:-1]  # Remove the outer parentheses
-                return f"${inner}$"
-            # This regex finds parentheses without nested ones containing a backslash.
-            processed_line = re.sub(r'\([^()]*\\[^()]*\)', inline_math_repl, line)
-            container.markdown(processed_line)
+    result = ""
+    i = 0
+    while i < len(text):
+        if text[i] == '(':
+            start = i
+            depth = 0
+            j = i
+            # Find the matching closing parenthesis
+            while j < len(text):
+                if text[j] == '(':
+                    depth += 1
+                elif text[j] == ')':
+                    depth -= 1
+                    if depth == 0:
+                        break
+                j += 1
+            # If a matching parenthesis is found, consider it a candidate
+            if j < len(text) and depth == 0:
+                candidate = text[start+1:j]
+                # Heuristic: if the candidate contains a LaTeX command or caret,
+                # assume it is a math expression.
+                if ('\\' in candidate) or ('^' in candidate):
+                    # Replace outer parentheses with inline math delimiters.
+                    result += "$" + candidate.strip() + "$"
+                    i = j + 1
+                    continue
+        # If no math expression is detected or no matching parenthesis, copy the character as is.
+        result += text[i]
+        i += 1
+    return result
 
 def stream_response(client, model_id, messages, system_prompt, inference_config, additional_model_request_fields):
     """
@@ -154,13 +171,13 @@ def stream_response(client, model_id, messages, system_prompt, inference_config,
         stream = response.get('stream')
         if stream:
             full_response = ""
-            
             for event in stream:
                 if 'contentBlockDelta' in event:
                     chunk = event['contentBlockDelta']['delta']['text']
                     full_response += chunk
-                    yield chunk
-                    
+                    # Automatically wrap math expressions in the full response before rendering
+                    rendered_response = wrap_math_expressions(full_response)
+                    yield rendered_response
             return full_response
                     
     except Exception as e:
@@ -194,13 +211,11 @@ if prompt := st.chat_input("What would you like to ask?"):
 
     # Create a placeholder for the streaming response
     with st.chat_message("assistant"):
-        # Create a container within the chat message to hold the response
-        chat_container = st.container()
-        response_placeholder = chat_container.empty()
+        response_placeholder = st.empty()
         full_response = ""
         
-        # Stream the response in real time
-        for chunk in stream_response(
+        # Stream the response and update in real-time
+        for rendered_chunk in stream_response(
             client,
             MODEL_ID,
             messages,
@@ -208,17 +223,14 @@ if prompt := st.chat_input("What would you like to ask?"):
             inference_config,
             additional_model_request_fields
         ):
-            if chunk:
-                full_response += chunk
-                # Update the placeholder with the current accumulated response plus a cursor
-                response_placeholder.markdown(full_response + "▌")
+            if rendered_chunk:
+                # Update the response placeholder with a cursor symbol
+                response_placeholder.markdown(rendered_chunk + "▌")
         
-        # Once streaming is complete, clear the placeholder and render the final response
-        response_placeholder.empty()
-        render_text_with_math(full_response, chat_container)
+        # Final rendering without the cursor
+        final_rendered = wrap_math_expressions(full_response)
+        response_placeholder.markdown(final_rendered)
         
-        # Add the complete response to chat history
-        if full_response:
-            st.session_state.messages.append({"role": "assistant", "content": full_response})
-
-
+        # Add the complete response to chat history if available
+        if final_rendered:
+            st.session_state.messages.append({"role": "assistant", "content": final_rendered})
